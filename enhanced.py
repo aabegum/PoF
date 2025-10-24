@@ -1162,12 +1162,13 @@ if __name__ == "__main__":
         exit(1)
     
     # Define feature columns (from Step 3.5 "Low VIF" strategy)
+    # IMPORTANT: Order must match the training order expected by the model
     feature_cols = [
         'Ekipman_Yaşı_Yıl', 'Arıza_Sayısı_12ay', 'Arıza_Sayısı_3ay',
         'Toplam_Müşteri_Sayısı', 'Kentsel_Müşteri_Oranı', 'Kırsal_Müşteri_Oranı',
         'OG_Müşteri_Oranı', 'Ekipman_Yoğunluk_Skoru', 'Müşteri_Başına_Arıza',
-        'Ay_Sin', 'Ay_Cos', 'Tekrarlayan_Arıza_Flag', 'Hafta_İçi',
-        'Mevsim_İlkbahar', 'Mevsim_Sonbahar', 'Mevsim_Yaz'
+        'Tekrarlayan_Arıza_Flag', 'Hafta_İçi', 'Ay_Sin', 'Ay_Cos',
+        'Mevsim_Sonbahar', 'Mevsim_Yaz', 'Mevsim_İlkbahar'
     ]
     
     # Verify columns exist
