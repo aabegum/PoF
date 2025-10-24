@@ -201,15 +201,7 @@ def load_and_validate_data():
     print(f"   - PoF positive rate: {df['PoF_12_month'].mean():.1%}")
     if has_coords:
         print(f"   - Missing coordinates: {df[['KOORDINAT_X', 'KOORDINAT_Y']].isna().any(axis=1).sum()}")
-    
-    # Kesici equipment check
-    kesici_mask = df['Ekipman Sınıfı'].str.contains('Kesici|kesici', na=False, case=False)
-    kesici_count = kesici_mask.sum()
-    kesici_high_risk = (kesici_mask & (df['Risk_Category_Final'] == 'High Risk')).sum()
-    print(f"\n🎯 Critical Equipment (Kesici):")
-    print(f"   - Total: {kesici_count}")
-    print(f"   - High Risk: {kesici_high_risk} ({kesici_high_risk/kesici_count*100:.1f}% of Kesici)")
-    
+
     return df, model, scaler, best_params
 
 
@@ -268,16 +260,16 @@ def survival_analysis(df):
     ax.set_ylabel('Survival Probability')
     ax.grid(True, alpha=0.3)
     
-    # By equipment type (Kesici vs Others)
+    # By equipment type (top 3 types)
     ax = axes[0, 1]
-    for equipment_type in ['Kesici', 'Trafo']:
-        if equipment_type in survival_data['type'].values:
-            mask = survival_data['type'] == equipment_type
-            kmf.fit(survival_data.loc[mask, 'duration'], 
-                   survival_data.loc[mask, 'event'],
-                   label=equipment_type)
-            kmf.plot_survival_function(ax=ax, ci_show=True)
-    ax.set_title('Survival by Equipment Type', fontsize=14, fontweight='bold')
+    top_equipment_types = survival_data['type'].value_counts().head(3).index
+    for equipment_type in top_equipment_types:
+        mask = survival_data['type'] == equipment_type
+        kmf.fit(survival_data.loc[mask, 'duration'],
+               survival_data.loc[mask, 'event'],
+               label=equipment_type)
+        kmf.plot_survival_function(ax=ax, ci_show=True)
+    ax.set_title('Survival by Equipment Type (Top 3)', fontsize=14, fontweight='bold')
     ax.set_xlabel('Equipment Age (years)')
     ax.set_ylabel('Survival Probability')
     ax.legend()
@@ -318,15 +310,15 @@ def survival_analysis(df):
     print(f"   ✅ Saved: step4_survival_kaplan_meier.png")
     plt.close()
     
-    # Calculate median survival times
+    # Calculate median survival times for top equipment types
     print("\n📊 Median Survival Times:")
-    for equipment_type in ['Kesici', 'Trafo']:
-        if equipment_type in survival_data['type'].values:
-            mask = survival_data['type'] == equipment_type
-            kmf.fit(survival_data.loc[mask, 'duration'], 
-                   survival_data.loc[mask, 'event'])
-            median_survival = kmf.median_survival_time_
-            print(f"   - {equipment_type}: {median_survival:.1f} years")
+    top_equipment_types = survival_data['type'].value_counts().head(5).index
+    for equipment_type in top_equipment_types:
+        mask = survival_data['type'] == equipment_type
+        kmf.fit(survival_data.loc[mask, 'duration'],
+               survival_data.loc[mask, 'event'])
+        median_survival = kmf.median_survival_time_
+        print(f"   - {equipment_type}: {median_survival:.1f} years")
     
     # ========================================
     # 1.2: Cox Proportional Hazards Model
@@ -358,21 +350,23 @@ def survival_analysis(df):
     print(f"   ✅ Saved: step4_survival_cox_hazard_ratios.png")
     plt.close()
     
-    # Export survival results
+    # Export survival results - top equipment types plus overall
+    top_equipment_types = survival_data['type'].value_counts().head(5).index.tolist()
+
+    equipment_types_list = top_equipment_types + ['Overall']
+    counts_list = [
+        (survival_data['type'] == eq_type).sum() for eq_type in top_equipment_types
+    ] + [len(survival_data)]
+    events_list = [
+        survival_data[survival_data['type'] == eq_type]['event'].sum() for eq_type in top_equipment_types
+    ] + [survival_data['event'].sum()]
+
     survival_summary = pd.DataFrame({
-        'Equipment_Type': ['Kesici', 'Trafo', 'Overall'],
-        'Count': [
-            (survival_data['type'] == 'Kesici').sum(),
-            (survival_data['type'] == 'Trafo').sum(),
-            len(survival_data)
-        ],
-        'Events': [
-            survival_data[survival_data['type'] == 'Kesici']['event'].sum(),
-            survival_data[survival_data['type'] == 'Trafo']['event'].sum(),
-            survival_data['event'].sum()
-        ]
+        'Equipment_Type': equipment_types_list,
+        'Count': counts_list,
+        'Events': events_list
     })
-    
+
     survival_summary.to_excel(OUTPUT_DIR / 'step4_survival_summary.xlsx', index=False)
     print(f"   ✅ Saved: step4_survival_summary.xlsx")
     
@@ -585,48 +579,11 @@ def create_risk_maps(df):
     
     fig.write_html(OUTPUT_DIR / 'step4_risk_map_overall.html')
     print(f"   ✅ Saved: step4_risk_map_overall.html")
-    
+
     # ========================================
-    # Map 2: Kesici (Critical) Equipment Only
+    # Map 2: High Risk Equipment by District
     # ========================================
-    print("\n📍 Creating Map 2: Kesici Critical Equipment...")
-    
-    df_kesici = df_map[df_map['Ekipman Sınıfı'] == 'Kesici'].copy()
-    
-    if len(df_kesici) > 0:
-        fig = px.scatter_mapbox(
-            df_kesici,
-            lat='KOORDINAT_Y',
-            lon='KOORDINAT_X',
-            color='Risk_Category_Final',
-            color_discrete_map=risk_colors,
-            size='PoF_Score_Final',
-            hover_data={
-                'Ekipman Kodu': True,
-                'İlçe': True,
-                'Ekipman_Yaşı_Yıl': ':.1f',
-                'PoF_Score_Final': ':.3f',
-                'Risk_Category_Final': True,
-                'KOORDINAT_Y': False,
-                'KOORDINAT_X': False
-            },
-            zoom=9,
-            height=700,
-            title='Kesici Equipment Risk Map - Critical Assets'
-        )
-        
-        fig.update_layout(
-            mapbox_style="open-street-map",
-            margin={"r": 0, "t": 40, "l": 0, "b": 0}
-        )
-        
-        fig.write_html(OUTPUT_DIR / 'step4_risk_map_kesici.html')
-        print(f"   ✅ Saved: step4_risk_map_kesici.html")
-    
-    # ========================================
-    # Map 3: High Risk Equipment by District
-    # ========================================
-    print("\n📍 Creating Map 3: High Risk by District...")
+    print("\n📍 Creating Map 2: High Risk by District...")
     
     df_high_risk = df_map[df_map['Risk_Category_Final'] == 'High Risk'].copy()
     
@@ -656,11 +613,11 @@ def create_risk_maps(df):
     
     fig.write_html(OUTPUT_DIR / 'step4_risk_map_high_risk_districts.html')
     print(f"   ✅ Saved: step4_risk_map_high_risk_districts.html")
-    
+
     # ========================================
-    # Map 4: Equipment Age Heatmap
+    # Map 3: Equipment Age Heatmap
     # ========================================
-    print("\n📍 Creating Map 4: Equipment Age Distribution...")
+    print("\n📍 Creating Map 3: Equipment Age Distribution...")
     
     fig = px.scatter_mapbox(
         df_map,
@@ -711,25 +668,22 @@ def capex_prioritization(df):
     df_high_risk = df[df['Risk_Category_Final'] == 'High Risk'].copy()
     
     print(f"   - High-risk equipment: {len(df_high_risk):,}")
-    
+
     # Create prioritization score
-    # Factors: PoF_Score (40%), Age (30%), Customer Count (20%), Critical Type (10%)
-    
+    # Factors: PoF_Score (50%), Age (30%), Customer Count (20%)
+
     # Normalize factors
-    df_high_risk['Age_Normalized'] = (df_high_risk['Ekipman_Yaşı_Yıl'] / 
+    df_high_risk['Age_Normalized'] = (df_high_risk['Ekipman_Yaşı_Yıl'] /
                                        df_high_risk['Ekipman_Yaşı_Yıl'].max())
-    df_high_risk['Customer_Normalized'] = (df_high_risk['Toplam_Müşteri_Sayısı'] / 
+    df_high_risk['Customer_Normalized'] = (df_high_risk['Toplam_Müşteri_Sayısı'] /
                                             df_high_risk['Toplam_Müşteri_Sayısı'].max())
-    df_high_risk['Critical_Weight'] = df_high_risk['Ekipman Sınıfı'].apply(
-        lambda x: 1.0 if x == 'Kesici' else 0.5
-    )
-    
+
     # Calculate priority score (0-100)
+    # Weights: PoF_Score (50%), Age (30%), Customer Count (20%)
     df_high_risk['Priority_Score'] = (
-        df_high_risk['PoF_Score_Final'] * 40 +
+        df_high_risk['PoF_Score_Final'] * 50 +
         df_high_risk['Age_Normalized'] * 30 +
-        df_high_risk['Customer_Normalized'] * 20 +
-        df_high_risk['Critical_Weight'] * 10
+        df_high_risk['Customer_Normalized'] * 20
     )
     
     # Assign priority tiers
@@ -1162,12 +1116,13 @@ if __name__ == "__main__":
         exit(1)
     
     # Define feature columns (from Step 3.5 "Low VIF" strategy)
+    # IMPORTANT: Order must match the training order expected by the model
     feature_cols = [
         'Ekipman_Yaşı_Yıl', 'Arıza_Sayısı_12ay', 'Arıza_Sayısı_3ay',
         'Toplam_Müşteri_Sayısı', 'Kentsel_Müşteri_Oranı', 'Kırsal_Müşteri_Oranı',
         'OG_Müşteri_Oranı', 'Ekipman_Yoğunluk_Skoru', 'Müşteri_Başına_Arıza',
-        'Ay_Sin', 'Ay_Cos', 'Tekrarlayan_Arıza_Flag', 'Hafta_İçi',
-        'Mevsim_İlkbahar', 'Mevsim_Sonbahar', 'Mevsim_Yaz'
+        'Tekrarlayan_Arıza_Flag', 'Hafta_İçi', 'Ay_Sin', 'Ay_Cos',
+        'Mevsim_Sonbahar', 'Mevsim_Yaz', 'Mevsim_İlkbahar'
     ]
     
     # Verify columns exist
