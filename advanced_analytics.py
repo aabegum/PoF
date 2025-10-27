@@ -93,19 +93,16 @@ print("[2/7] Performing Survival Analysis...")
 def prepare_survival_data(df):
     """Prepare data for survival analysis - adjusted for available data"""
     df_survival = df.copy()
-
-    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
-    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df_survival.columns else 'Ekipman Sınıfı'
-
+    
     # Calculate time-to-failure for each equipment
     equipment_failures = df_survival.groupby('Ekipman Kodu').agg({
         'Arıza_Tarihi': ['min', 'max', 'count'],
         'Ekipman_Yaşı_Yıl': 'first',
-        equipment_type_col: 'first',
+        'Ekipman Sınıfı': 'first',
         'PoF_12_month': 'max'  # Use the PoF target
     }).reset_index()
-
-    equipment_failures.columns = ['Ekipman_Kodu', 'First_Fault', 'Last_Fault',
+    
+    equipment_failures.columns = ['Ekipman_Kodu', 'First_Fault', 'Last_Fault', 
                                  'Fault_Count', 'Age', 'Equipment_Class', 'Had_Future_Fault']
     
     # Reference date for right-censoring (use max fault date + safety margin)
@@ -395,91 +392,102 @@ for age_group, score in health_by_age.items():
 print("\n[5/7] Performing SHAP Analysis...")
 
 # Prepare data for SHAP - ensure same features as during training
-df_shap = df[best_features].fillna(df[best_features].median())
+df_shap = df[best_features].copy()
+df_shap = df_shap.fillna(df_shap.median())
 
-# Check if scaler has feature names and align with our data
-if hasattr(scaler, 'feature_names_in_'):
-    # The scaler was trained with specific feature names - use those
-    scaler_features = scaler.feature_names_in_
-    print(f"✓ Scaler was fitted on {len(scaler_features)} features")
-    
-    # Ensure our data has the same features in the same order
-    missing_features = set(scaler_features) - set(df_shap.columns)
-    if missing_features:
-        print(f"⚠️ Missing features in current data: {missing_features}")
-    
-    # Reorder columns to match scaler's expected order
-    available_features = [f for f in scaler_features if f in df_shap.columns]
-    df_shap_aligned = df_shap[available_features].copy()
-    
-    # Apply scaling only to the aligned features
-    X_shap = scaler.transform(df_shap_aligned)
-    print(f"✓ Applied scaler to {len(available_features)} aligned features")
-    
+# Sample data for SHAP to avoid memory issues (SHAP is computationally expensive)
+sample_size = min(1000, len(df_shap))
+df_shap_sample = df_shap.sample(n=sample_size, random_state=RANDOM_STATE)
+print(f"✓ Sampled {sample_size:,} rows for SHAP analysis")
+
+# Get the feature names the model expects
+if hasattr(model, 'feature_names_in_'):
+    model_features = list(model.feature_names_in_)
+    print(f"✓ Model expects {len(model_features)} features")
+elif hasattr(model, 'get_booster'):
+    # XGBoost specific
+    booster = model.get_booster()
+    model_features = booster.feature_names
+    print(f"✓ Model expects {len(model_features)} features (from booster)")
 else:
-    # Fallback: manual alignment for older scikit-learn versions
-    print("⚠️ Scaler doesn't have feature names - using manual alignment")
-    
-    # Get numeric features (exclude binary/one-hot encoded)
-    numeric_features = [f for f in best_features if f not in [
-        'Mevsim_Sonbahar', 'Mevsim_Yaz', 'Mevsim_İlkbahar', 
-        'Hafta_İçi', 'Tekrarlayan_Arıza_Flag'
-    ]]
-    
-    # Scale only numeric features
-    df_shap_numeric = df_shap[numeric_features].copy()
-    df_shap_binary = df_shap[['Mevsim_Sonbahar', 'Mevsim_Yaz', 'Mevsim_İlkbahar', 
-                             'Hafta_İçi', 'Tekrarlayan_Arıza_Flag']].copy()
-    
-    # Apply scaling only to numeric features
-    df_shap_numeric_scaled = pd.DataFrame(
-        scaler.transform(df_shap_numeric),
-        columns=numeric_features,
-        index=df_shap.index
-    )
-    
-    # Combine scaled numeric features with binary features
-    X_shap = pd.concat([df_shap_numeric_scaled, df_shap_binary], axis=1)
-    print(f"✓ Manually scaled {len(numeric_features)} numeric features")
-    print(f"✓ Preserved {len(df_shap_binary.columns)} binary features without scaling")
+    # Fallback to best_features
+    model_features = best_features
+    print(f"⚠️ Using best_features as model features")
 
-# Create SHAP explainer
+# Ensure we have all required features in the correct order
+missing_features = set(model_features) - set(df_shap_sample.columns)
+if missing_features:
+    print(f"⚠️ Missing features: {missing_features}")
+    # Add missing features with zeros
+    for feat in missing_features:
+        df_shap_sample[feat] = 0
+
+# Reorder columns to match model's expected order
+df_shap_sample = df_shap_sample[model_features]
+print(f"✓ Aligned features: {df_shap_sample.shape}")
+
+# Apply the same scaling transformation as during training
+# The scaler was fit on the training data, so we just transform
+X_shap_scaled = scaler.transform(df_shap_sample)
+
+# Convert back to DataFrame to preserve feature names
+X_shap = pd.DataFrame(
+    X_shap_scaled,
+    columns=model_features,
+    index=df_shap_sample.index
+)
+print(f"✓ Scaled data shape: {X_shap.shape}")
+
+# Verify shape matches model expectations
+expected_features = len(model_features)
+actual_features = X_shap.shape[1]
+if expected_features != actual_features:
+    print(f"⚠️ Warning: Expected {expected_features} features, got {actual_features}")
+
+# Create SHAP explainer with the model
+print("✓ Creating SHAP TreeExplainer...")
 explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X_shap)
 
-print("✓ SHAP values calculated")
+# Calculate SHAP values - use numpy array for stability
+print("✓ Computing SHAP values (this may take a moment)...")
+shap_values = explainer.shap_values(X_shap.values)
+
+print(f"✓ SHAP values calculated: shape {np.array(shap_values).shape}")
 
 # SHAP Summary Plot
 plt.figure(figsize=(10, 8))
-shap.summary_plot(shap_values, X_shap, feature_names=X_shap.columns.tolist(), show=False)
+shap.summary_plot(shap_values, X_shap, show=False, max_display=15)
 plt.title('SHAP Feature Importance - Root Cause Analysis', fontsize=14, fontweight='bold')
 plt.tight_layout()
 plt.savefig(OUTPUT_DIR + 'shap_summary.png', dpi=300, bbox_inches='tight')
+plt.close()
 print(f"✓ SHAP summary plot saved: {OUTPUT_DIR}shap_summary.png")
 
 # SHAP Bar Plot (mean absolute SHAP values)
 plt.figure(figsize=(10, 6))
-shap.summary_plot(shap_values, X_shap, feature_names=X_shap.columns.tolist(), plot_type="bar", show=False)
+shap.summary_plot(shap_values, X_shap, plot_type="bar", show=False, max_display=15)
 plt.title('SHAP Feature Importance (Mean Absolute Impact)', fontsize=14, fontweight='bold')
 plt.tight_layout()
 plt.savefig(OUTPUT_DIR + 'shap_bar.png', dpi=300, bbox_inches='tight')
+plt.close()
 print(f"✓ SHAP bar plot saved: {OUTPUT_DIR}shap_bar.png")
 
 # Calculate global feature importance from SHAP
 shap_df = pd.DataFrame(shap_values, columns=[f'SHAP_{f}' for f in X_shap.columns])
 global_shap_importance = shap_df.abs().mean().sort_values(ascending=False)
 
-print(f"\n📊 Global SHAP Feature Importance:")
+print(f"\n📊 Global SHAP Feature Importance (Top 10):")
 for i, (feature, importance) in enumerate(global_shap_importance.head(10).items(), 1):
     feature_name = feature.replace('SHAP_', '')
     print(f"  {i:2d}. {feature_name:30s}: {importance:.4f}")
 
-# Save detailed SHAP values
-shap_df['Ekipman_Kodu'] = df['Ekipman Kodu'].values
-shap_df['PoF_Score'] = df['PoF_Score_Final'].values
-shap_df['Health_Score'] = df['Health_Score'].values
+# Save detailed SHAP values for the sampled data
+shap_df['Ekipman_Kodu'] = df.loc[X_shap.index, 'Ekipman Kodu'].values
+shap_df['PoF_Score'] = df.loc[X_shap.index, 'PoF_Score_Final'].values
+shap_df['Health_Score'] = df.loc[X_shap.index, 'Health_Score'].values
 shap_df.to_csv(OUTPUT_DIR + 'shap_values_detailed.csv', index=False)
 print(f"✓ Detailed SHAP values saved: {OUTPUT_DIR}shap_values_detailed.csv")
+print(f"  (Computed for {sample_size:,} sampled equipment)")
 # ============================================================================
 # 6. CAPEX PRIORITIZATION & RISK CATEGORIZATION
 # ============================================================================
@@ -515,9 +523,8 @@ high_risk_equipment = df[df['CAPEX_Priority'].isin(['IMMEDIATE_REPLACEMENT', 'HI
 print(f"\n⚠️  High-risk equipment requiring action: {len(high_risk_equipment):,}")
 
 # Equipment class analysis for CAPEX planning
-print(f"\n🔧 EQUIPMENT TYPE - CAPEX ANALYSIS:")
-equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
-equipment_capex = df.groupby(equipment_type_col)['CAPEX_Priority'].value_counts().unstack().fillna(0)
+print(f"\n🔧 EQUIPMENT CLASS - CAPEX ANALYSIS:")
+equipment_capex = df.groupby('Ekipman Sınıfı')['CAPEX_Priority'].value_counts().unstack().fillna(0)
 top_classes = equipment_capex.sum(axis=1).sort_values(ascending=False).head(5)
 
 for eq_class in top_classes.index:
