@@ -152,6 +152,53 @@ def safe_scale_features(scaler, X, feature_cols):
     return X_scaled
 
 
+def get_model_feature_order(model):
+    """
+    Get the feature order expected by the model
+
+    Args:
+        model: XGBoost model
+
+    Returns:
+        List of feature names in the order the model expects
+    """
+    if hasattr(model, 'feature_names_in_'):
+        return list(model.feature_names_in_)
+    elif hasattr(model, 'get_booster'):
+        booster = model.get_booster()
+        if hasattr(booster, 'feature_names') and booster.feature_names:
+            return booster.feature_names
+    return None
+
+
+def align_features_for_model(X, model):
+    """
+    Reorder DataFrame columns to match model's expected feature order
+
+    Args:
+        X: DataFrame with features
+        model: XGBoost model
+
+    Returns:
+        DataFrame with columns in model's expected order
+    """
+    model_features = get_model_feature_order(model)
+
+    if model_features is None:
+        # Can't determine model's feature order, return as-is
+        return X
+
+    # Check if we have all required features
+    missing_features = set(model_features) - set(X.columns)
+    if missing_features:
+        print(f"   ⚠️  Warning: Adding missing features with zeros: {missing_features}")
+        for feat in missing_features:
+            X[feat] = 0
+
+    # Reorder columns to match model's expectation
+    return X[model_features]
+
+
 # ============================================================================
 # PART 0: DATA LOADING & VALIDATION
 # ============================================================================
@@ -488,8 +535,11 @@ def backtesting_analysis(df, model, scaler, feature_cols):
         X_train_scaled = safe_scale_features(scaler, X_train, scaler_features)
         X_test_scaled = safe_scale_features(scaler, X_test, scaler_features)
 
+        # Align features to match model's expected order
+        X_test_aligned = align_features_for_model(X_test_scaled, model)
+
         # Make predictions
-        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+        y_pred_proba = model.predict_proba(X_test_aligned)[:, 1]
 
         # Calculate metrics
         auc = roc_auc_score(y_test, y_pred_proba)
@@ -1055,8 +1105,11 @@ def calibration_analysis(df, model, feature_cols, scaler):
     # Scale - use ALL features the scaler was trained on
     X_scaled = safe_scale_features(scaler, X, feature_cols)
 
+    # Align features to match model's expected order
+    X_aligned = align_features_for_model(X_scaled, model)
+
     # Predictions
-    y_pred_proba = model.predict_proba(X_scaled)[:, 1]
+    y_pred_proba = model.predict_proba(X_aligned)[:, 1]
 
     # Brier score
     brier_score = brier_score_loss(y, y_pred_proba)
@@ -1161,7 +1214,11 @@ def catboost_comparison(df, feature_cols, scaler):
 
     # Load XGBoost for comparison
     model = joblib.load(MODEL_FILE)
-    y_pred_xgb = model.predict_proba(X_test)[:, 1]
+
+    # Align features for XGBoost
+    X_test_aligned = align_features_for_model(X_test, model)
+
+    y_pred_xgb = model.predict_proba(X_test_aligned)[:, 1]
     auc_xgboost = roc_auc_score(y_test, y_pred_xgb)
 
     print(f"\n   ✅ CatBoost AUC: {auc_catboost:.4f}")
