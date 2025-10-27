@@ -536,17 +536,6 @@ for risk in ['High Risk', 'Medium Risk', 'Low Risk']:
     count = (df['Risk_Category_Final'] == risk).sum()
     print(f"  {risk:15s}: {count:6,} ({count/len(df)*100:5.1f}%)")
 
-# Kesici analysis
-kesici_mask = df['Ekipman Sınıfı'].str.contains('Kesici|kesici', na=False, case=False)
-df_kesici = df[kesici_mask].copy()
-
-print(f"\n🔧 KESICI EQUIPMENT (Final Model):")
-print(f"  Total: {len(df_kesici):,}")
-for risk in ['High Risk', 'Medium Risk', 'Low Risk']:
-    count = (df_kesici['Risk_Category_Final'] == risk).sum()
-    pct = count / len(df_kesici) * 100 if len(df_kesici) > 0 else 0
-    print(f"  {risk:15s}: {count:6,} ({pct:5.1f}%)")
-
 # Save outputs
 output_file = OUTPUT_DIR + 'step3_5_final_risk_scored.xlsx'
 df.to_excel(output_file, index=False, engine='openpyxl')
@@ -598,7 +587,6 @@ FINAL MODEL (Tuned):
   2. Best Strategy: {best_strategy_name}
   3. Top Feature: {feature_imp_final.iloc[0]['Feature']}
   4. High Risk Equipment: {(df['Risk_Category_Final'] == 'High Risk').sum():,}
-  5. High Risk Kesici: {(df_kesici['Risk_Category_Final'] == 'High Risk').sum():,}
 
 💡 OPTIMIZATIONS APPLIED:
   ✅ VIF analysis (multicollinearity detection)

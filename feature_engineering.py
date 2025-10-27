@@ -358,14 +358,6 @@ print(f"  Total rows: {len(df):,}")
 print(f"  Total features: {len(df.columns)}")
 print(f"  New features: {len([f for f in new_features if f in df.columns])}")
 
-print("\n⭐ KESICI EQUIPMENT FOCUS:")
-kesici_mask = df['Ekipman Sınıfı'].str.contains('Kesici', na=False, case=False)
-kesici_df = df[kesici_mask]
-print(f"  Kesici count: {len(kesici_df):,}")
-print(f"  Mean faults (12m): {kesici_df['Arıza_Sayısı_12ay'].mean():.2f}")
-print(f"  Mean age: {kesici_df['Ekipman_Yaşı_Yıl'].mean():.1f} years")
-print(f"  Repeating faults: {kesici_df['Tekrarlayan_Arıza_Flag'].sum():,}")
-
 # ============================================================================
 # 9. SAVE PROCESSED DATA
 # ============================================================================
@@ -399,7 +391,6 @@ with open(summary_file, 'w', encoding='utf-8') as f:
     f.write("\nKey Statistics:\n")
     f.write(f"  Mean faults (12m): {df['Arıza_Sayısı_12ay'].mean():.2f}\n")
     f.write(f"  Repeating faults: {df['Tekrarlayan_Arıza_Flag'].sum():,}\n")
-    f.write(f"  Kesici equipment: {kesici_mask.sum():,}\n")
 
 print(f"✓ Summary saved to: {summary_file}")
 

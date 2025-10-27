@@ -470,17 +470,6 @@ for risk in ['High Risk', 'Medium Risk', 'Low Risk']:
     count = (df['Risk_Category_Improved'] == risk).sum()
     print(f"  {risk:15s}: {count:6,} ({count/len(df)*100:5.1f}%)")
 
-# Kesici analysis
-kesici_mask = df['Ekipman Sınıfı'].str.contains('Kesici|kesici', na=False, case=False)
-df_kesici = df[kesici_mask].copy()
-
-print(f"\n🔧 KESICI EQUIPMENT (Improved Model):")
-print(f"  Total: {len(df_kesici):,}")
-for risk in ['High Risk', 'Medium Risk', 'Low Risk']:
-    count = (df_kesici['Risk_Category_Improved'] == risk).sum()
-    pct = count / len(df_kesici) * 100 if len(df_kesici) > 0 else 0
-    print(f"  {risk:15s}: {count:6,} ({pct:5.1f}%)")
-
 # Save results
 output_file = OUTPUT_DIR + 'step3_improved_risk_scored.xlsx'
 df.to_excel(output_file, index=False, engine='openpyxl')
@@ -570,11 +559,10 @@ AGE SOURCE ANALYSIS:
 
 RISK DISTRIBUTION:
   • High Risk: {(df['Risk_Category_Improved'] == 'High Risk').sum():,} equipment
-  • Kesici High Risk: {(df_kesici['Risk_Category_Improved'] == 'High Risk').sum():,} equipment
 
 💡 ACTIONABLE INSIGHTS:
   1. Use IMPROVED MODEL (no temporal leakage + proper encoding)
-  2. Focus on {(df_kesici['Risk_Category_Improved'] == 'High Risk').sum()} HIGH RISK Kesici
+  2. Focus on HIGH RISK equipment for prioritization
   3. Consider age source reliability in decisions
   4. Previous script features → Add in STEP 4
 

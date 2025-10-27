@@ -220,20 +220,23 @@ def survival_analysis(df):
     
     # Prepare survival data
     print("\n📊 Preparing survival analysis data...")
-    
+
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
+
     # For each equipment, calculate time to first fault (or censoring)
     survival_data = df.groupby('Ekipman Kodu').agg({
         'Ekipman_Yaşı_Yıl': 'first',  # Age at observation
         'Arıza_Tarihi': 'min',  # First fault date
-        'Ekipman Sınıfı': 'first',
+        equipment_type_col: 'first',
         'İlçe': 'first',
         'PoF_12_month': 'max',  # Did fault occur?
         'Kentsel_Müşteri_Oranı': 'first',
         'OG_Müşteri_Oranı': 'first',
         'Toplam_Müşteri_Sayısı': 'first'
     }).reset_index()
-    
-    survival_data.columns = ['Ekipman_Kodu', 'duration', 'event_date', 'type', 
+
+    survival_data.columns = ['Ekipman_Kodu', 'duration', 'event_date', 'type',
                              'district', 'event', 'urban_ratio', 'industrial_ratio',
                              'total_customers']
     
@@ -524,9 +527,12 @@ def create_risk_maps(df):
     print("\n" + "="*80)
     print("PART 3: INTERACTIVE RISK MAPS")
     print("="*80)
-    
+
     print("\n🗺️  Creating interactive risk maps...")
-    
+
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
+
     # Filter out missing coordinates
     if 'KOORDINAT_X' not in df.columns or 'KOORDINAT_Y' not in df.columns:
         print("   ⚠️  No coordinate data available, skipping maps")
@@ -559,7 +565,7 @@ def create_risk_maps(df):
         size='PoF_Score_Final',
         hover_data={
             'Ekipman Kodu': True,
-            'Ekipman Sınıfı': True,
+            equipment_type_col: True,
             'İlçe': True,
             'Ekipman_Yaşı_Yıl': ':.1f',
             'PoF_Score_Final': ':.3f',
@@ -595,7 +601,7 @@ def create_risk_maps(df):
         size='PoF_Score_Final',
         hover_data={
             'Ekipman Kodu': True,
-            'Ekipman Sınıfı': True,
+            equipment_type_col: True,
             'Ekipman_Yaşı_Yıl': ':.1f',
             'PoF_Score_Final': ':.3f',
             'KOORDINAT_Y': False,
@@ -628,7 +634,7 @@ def create_risk_maps(df):
         size='Ekipman_Yaşı_Yıl',
         hover_data={
             'Ekipman Kodu': True,
-            'Ekipman Sınıfı': True,
+            equipment_type_col: True,
             'İlçe': True,
             'Risk_Category_Final': True,
             'KOORDINAT_Y': False,
@@ -661,9 +667,12 @@ def capex_prioritization(df):
     print("\n" + "="*80)
     print("PART 4: CAPEX PRIORITIZATION FRAMEWORK")
     print("="*80)
-    
+
     print("\n💰 Creating CAPEX prioritization analysis...")
-    
+
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
+
     # Focus on high-risk equipment
     df_high_risk = df[df['Risk_Category_Final'] == 'High Risk'].copy()
     
@@ -703,10 +712,9 @@ def capex_prioritization(df):
         print(f"   - {tier}: {count:,} equipment ({count/len(df_prioritized)*100:.1f}%)")
     
     # Top 20 priority equipment
-    top_priority = df_prioritized.head(20)[
-        ['Ekipman Kodu', 'Ekipman Sınıfı', 'İlçe', 'Ekipman_Yaşı_Yıl', 
-         'Toplam_Müşteri_Sayısı', 'PoF_Score_Final', 'Priority_Score', 'Priority_Tier']
-    ]
+    priority_cols = ['Ekipman Kodu', equipment_type_col, 'İlçe', 'Ekipman_Yaşı_Yıl',
+                     'Toplam_Müşteri_Sayısı', 'PoF_Score_Final', 'Priority_Score', 'Priority_Tier']
+    top_priority = df_prioritized.head(20)[priority_cols]
     
     print("\n🎯 Top 20 Priority Equipment:")
     print(top_priority.to_string(index=False))
@@ -765,11 +773,10 @@ def capex_prioritization(df):
     plt.close()
     
     # Export prioritized list
-    df_prioritized[
-        ['Ekipman Kodu', 'Ekipman Sınıfı', 'İlçe', 'Ekipman_Yaşı_Yıl',
-         'Toplam_Müşteri_Sayısı', 'PoF_Score_Final', 'Priority_Score', 
-         'Priority_Tier', 'KOORDINAT_Y', 'KOORDINAT_X']
-    ].to_excel(OUTPUT_DIR / 'step4_capex_prioritized_list.xlsx', index=False)
+    export_cols = ['Ekipman Kodu', equipment_type_col, 'İlçe', 'Ekipman_Yaşı_Yıl',
+                   'Toplam_Müşteri_Sayısı', 'PoF_Score_Final', 'Priority_Score',
+                   'Priority_Tier', 'KOORDINAT_Y', 'KOORDINAT_X']
+    df_prioritized[export_cols].to_excel(OUTPUT_DIR / 'step4_capex_prioritized_list.xlsx', index=False)
     print(f"   ✅ Saved: step4_capex_prioritized_list.xlsx")
     
     return df_prioritized
