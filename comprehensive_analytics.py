@@ -272,16 +272,25 @@ def load_and_validate_data():
     # Validate data structure
     print("\n📊 Data Structure Validation:")
     required_cols = [
-        'Ekipman Kodu', 'Ekipman Sınıfı', 'İlçe',
+        'Ekipman Kodu', 'İlçe',
         'Ekipman_Yaşı_Yıl', 'PoF_12_month', 'PoF_Score_Final',
         'Risk_Category_Final', 'Arıza_Tarihi'
     ]
 
+    # Check for equipment type column (either Equipment_Type or Ekipman Sınıfı)
+    has_equipment_type = 'Equipment_Type' in df.columns or 'Ekipman Sınıfı' in df.columns
+
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         print(f"   ⚠️  Missing columns: {missing_cols}")
+    elif not has_equipment_type:
+        print(f"   ⚠️  Missing equipment type column (Equipment_Type or Ekipman Sınıfı)")
     else:
         print("   ✅ All required columns present")
+        if 'Equipment_Type' in df.columns:
+            print("   ✅ Using Equipment_Type column")
+        else:
+            print("   ✅ Using Ekipman Sınıfı column")
 
     # Check for coordinates
     has_coords = 'KOORDINAT_X' in df.columns and 'KOORDINAT_Y' in df.columns
@@ -318,11 +327,14 @@ def survival_analysis(df):
     # Prepare survival data
     print("\n📊 Preparing survival analysis data...")
 
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
+
     # For each equipment, calculate time to first fault
     survival_data = df.groupby('Ekipman Kodu').agg({
         'Ekipman_Yaşı_Yıl': 'first',
         'Arıza_Tarihi': ['min', 'max', 'count'],
-        'Ekipman Sınıfı': 'first',
+        equipment_type_col: 'first',
         'İlçe': 'first',
         'PoF_12_month': 'max',
         'Toplam_Müşteri_Sayısı': 'first'
@@ -845,6 +857,9 @@ def create_risk_maps(df):
 
     print("\n🗺️  Creating interactive maps...")
 
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
+
     # Check coordinates
     if 'KOORDINAT_X' not in df.columns or 'KOORDINAT_Y' not in df.columns:
         print("   ⚠️  No coordinates available")
@@ -873,7 +888,7 @@ def create_risk_maps(df):
         size='PoF_Score_Final',
         hover_data={
             'Ekipman Kodu': True,
-            'Ekipman Sınıfı': True,
+            equipment_type_col: True,
             'İlçe': True,
             'Ekipman_Yaşı_Yıl': ':.1f',
             'PoF_Score_Final': ':.3f',
@@ -902,7 +917,7 @@ def create_risk_maps(df):
             size='PoF_Score_Final',
             hover_data={
                 'Ekipman Kodu': True,
-                'Ekipman Sınıfı': True,
+                equipment_type_col: True,
                 'Ekipman_Yaşı_Yıl': ':.1f',
                 'PoF_Score_Final': ':.3f',
                 'Health_Score': ':.1f',
@@ -928,7 +943,7 @@ def create_risk_maps(df):
         size='Ekipman_Yaşı_Yıl',
         hover_data={
             'Ekipman Kodu': True,
-            'Ekipman Sınıfı': True,
+            equipment_type_col: True,
             'İlçe': True,
             'Risk_Category_Final': True,
             'Health_Score': ':.1f',
@@ -954,7 +969,7 @@ def create_risk_maps(df):
         size='PoF_Score_Final',
         hover_data={
             'Ekipman Kodu': True,
-            'Ekipman Sınıfı': True,
+            equipment_type_col: True,
             'İlçe': True,
             'Health_Status': True,
             'Risk_Category_Final': True,
@@ -985,6 +1000,9 @@ def capex_prioritization(df):
     print("="*80)
 
     print("\n💰 Generating CAPEX priorities...")
+
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
 
     def categorize_capex(row):
         pof = row['PoF_Score_Final']
@@ -1072,7 +1090,7 @@ def capex_prioritization(df):
     high_priority = df[df['CAPEX_Priority'].isin(['IMMEDIATE_REPLACEMENT', 'HIGH_PRIORITY'])].copy()
     high_priority = high_priority.sort_values('PoF_Score_Final', ascending=False)
 
-    export_cols = ['Ekipman Kodu', 'Ekipman Sınıfı', 'İlçe', 'Ekipman_Yaşı_Yıl',
+    export_cols = ['Ekipman Kodu', equipment_type_col, 'İlçe', 'Ekipman_Yaşı_Yıl',
                    'PoF_Score_Final', 'Health_Score', 'Health_Status', 'CAPEX_Priority']
     if 'KOORDINAT_X' in df.columns:
         export_cols.extend(['KOORDINAT_X', 'KOORDINAT_Y'])

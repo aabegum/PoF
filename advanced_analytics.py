@@ -93,16 +93,19 @@ print("[2/7] Performing Survival Analysis...")
 def prepare_survival_data(df):
     """Prepare data for survival analysis - adjusted for available data"""
     df_survival = df.copy()
-    
+
+    # Use Equipment_Type if available, otherwise fall back to Ekipman Sınıfı
+    equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df_survival.columns else 'Ekipman Sınıfı'
+
     # Calculate time-to-failure for each equipment
     equipment_failures = df_survival.groupby('Ekipman Kodu').agg({
         'Arıza_Tarihi': ['min', 'max', 'count'],
         'Ekipman_Yaşı_Yıl': 'first',
-        'Ekipman Sınıfı': 'first',
+        equipment_type_col: 'first',
         'PoF_12_month': 'max'  # Use the PoF target
     }).reset_index()
-    
-    equipment_failures.columns = ['Ekipman_Kodu', 'First_Fault', 'Last_Fault', 
+
+    equipment_failures.columns = ['Ekipman_Kodu', 'First_Fault', 'Last_Fault',
                                  'Fault_Count', 'Age', 'Equipment_Class', 'Had_Future_Fault']
     
     # Reference date for right-censoring (use max fault date + safety margin)
@@ -523,8 +526,9 @@ high_risk_equipment = df[df['CAPEX_Priority'].isin(['IMMEDIATE_REPLACEMENT', 'HI
 print(f"\n⚠️  High-risk equipment requiring action: {len(high_risk_equipment):,}")
 
 # Equipment class analysis for CAPEX planning
-print(f"\n🔧 EQUIPMENT CLASS - CAPEX ANALYSIS:")
-equipment_capex = df.groupby('Ekipman Sınıfı')['CAPEX_Priority'].value_counts().unstack().fillna(0)
+print(f"\n🔧 EQUIPMENT TYPE - CAPEX ANALYSIS:")
+equipment_type_col = 'Equipment_Type' if 'Equipment_Type' in df.columns else 'Ekipman Sınıfı'
+equipment_capex = df.groupby(equipment_type_col)['CAPEX_Priority'].value_counts().unstack().fillna(0)
 top_classes = equipment_capex.sum(axis=1).sort_values(ascending=False).head(5)
 
 for eq_class in top_classes.index:
