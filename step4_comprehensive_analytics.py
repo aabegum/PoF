@@ -258,8 +258,8 @@ def survival_analysis(df):
         survival_data['Last_Fault'] - survival_data['First_Fault']
     ).dt.days
 
-    # Event indicator
-    survival_data['Failure_Event'] = survival_data['Had_Fault']
+    # Event indicator - convert to boolean for proper counting
+    survival_data['Failure_Event'] = (survival_data['Had_Fault'] > 0).astype(int)
 
     # For censored equipment
     censored_mask = survival_data['Failure_Event'] == 0
@@ -271,8 +271,8 @@ def survival_analysis(df):
     survival_data = survival_data[survival_data['Time_To_Failure'] > 0]
 
     print(f"   - Equipment tracked: {len(survival_data):,}")
-    print(f"   - Failures: {survival_data['Failure_Event'].sum():,}")
-    print(f"   - Censored: {(~survival_data['Failure_Event']).sum():,}")
+    print(f"   - Failures (events): {survival_data['Failure_Event'].sum():,}")
+    print(f"   - Censored (no event): {(survival_data['Failure_Event'] == 0).sum():,}")
 
     # ========================================
     # Kaplan-Meier Analysis
@@ -426,11 +426,9 @@ def backtesting_analysis(df, model, scaler, feature_cols):
 
     print("\n🔄 Running rolling window validation...")
 
-    # Identify numeric columns for scaling
-    numeric_cols_for_scaling = ['Ekipman_Yaşı_Yıl', 'Arıza_Sayısı_12ay', 'Arıza_Sayısı_3ay',
-                                'Toplam_Müşteri_Sayısı', 'Ekipman_Yoğunluk_Skoru',
-                                'Müşteri_Başına_Arıza', 'Ay_Sin']
-    numeric_cols_for_scaling = [col for col in numeric_cols_for_scaling if col in feature_cols]
+    # Get features the scaler expects (it was trained on ALL feature_cols)
+    # We need to pass all features to the scaler, not just numeric ones
+    scaler_features = feature_cols
 
     while current_date + test_size <= max_date:
         window_id += 1
@@ -453,9 +451,9 @@ def backtesting_analysis(df, model, scaler, feature_cols):
             current_date += timedelta(days=30)
             continue
 
-        # Scale features
-        X_train_scaled = safe_scale_features(scaler, X_train, numeric_cols_for_scaling)
-        X_test_scaled = safe_scale_features(scaler, X_test, numeric_cols_for_scaling)
+        # Scale features - use ALL features the scaler was trained on
+        X_train_scaled = safe_scale_features(scaler, X_train, scaler_features)
+        X_test_scaled = safe_scale_features(scaler, X_test, scaler_features)
 
         # Make predictions
         y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
@@ -1021,13 +1019,8 @@ def calibration_analysis(df, model, feature_cols, scaler):
     X = df[feature_cols]
     y = df['PoF_12_month']
 
-    # Scale
-    numeric_cols = ['Ekipman_Yaşı_Yıl', 'Arıza_Sayısı_12ay', 'Arıza_Sayısı_3ay',
-                   'Toplam_Müşteri_Sayısı', 'Ekipman_Yoğunluk_Skoru',
-                   'Müşteri_Başına_Arıza', 'Ay_Sin']
-    numeric_cols = [col for col in numeric_cols if col in feature_cols]
-
-    X_scaled = safe_scale_features(scaler, X, numeric_cols)
+    # Scale - use ALL features the scaler was trained on
+    X_scaled = safe_scale_features(scaler, X, feature_cols)
 
     # Predictions
     y_pred_proba = model.predict_proba(X_scaled)[:, 1]
@@ -1109,13 +1102,8 @@ def catboost_comparison(df, feature_cols, scaler):
     X = df[feature_cols]
     y = df['PoF_12_month']
 
-    # Scale
-    numeric_cols = ['Ekipman_Yaşı_Yıl', 'Arıza_Sayısı_12ay', 'Arıza_Sayısı_3ay',
-                   'Toplam_Müşteri_Sayısı', 'Ekipman_Yoğunluk_Skoru',
-                   'Müşteri_Başına_Arıza', 'Ay_Sin']
-    numeric_cols = [col for col in numeric_cols if col in feature_cols]
-
-    X_scaled = safe_scale_features(scaler, X, numeric_cols)
+    # Scale - use ALL features the scaler was trained on
+    X_scaled = safe_scale_features(scaler, X, feature_cols)
 
     # Split
     X_train, X_test, y_train, y_test = train_test_split(
