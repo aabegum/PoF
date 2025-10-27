@@ -101,7 +101,40 @@ def safe_scale_features(scaler, X, feature_cols):
     """
     X_scaled = X.copy()
 
-    # Check if we have features to scale
+    # Check if scaler has feature names from training
+    if hasattr(scaler, 'feature_names_in_'):
+        # Scaler was fit with specific features - use only those
+        scaler_features = list(scaler.feature_names_in_)
+
+        # Find which of our features were in the scaler's training
+        features_to_scale = [col for col in feature_cols if col in scaler_features]
+
+        # Find features in data that scaler doesn't know about (won't be scaled)
+        unscaled_features = [col for col in feature_cols if col not in scaler_features and col in X.columns]
+
+        # Also check if scaler has features we don't have
+        missing_in_data = [col for col in scaler_features if col not in X.columns]
+
+        if missing_in_data:
+            print(f"   ⚠️  Warning: Scaler expects features not in data: {missing_in_data}")
+            # Add missing features with zeros
+            for col in missing_in_data:
+                X_scaled[col] = 0
+            features_to_scale = scaler_features
+
+        if features_to_scale:
+            # Scale only the features the scaler knows about, in the correct order
+            X_scaled[scaler_features] = scaler.transform(X_scaled[scaler_features])
+
+        # Show info about what was scaled (only show once per run)
+        if not hasattr(safe_scale_features, '_info_shown'):
+            if unscaled_features:
+                print(f"   ℹ️  Note: {len(scaler_features)} features scaled, {len(unscaled_features)} features kept unscaled")
+            safe_scale_features._info_shown = True
+
+        return X_scaled
+
+    # Fallback: Check if we have features to scale
     available_cols = [col for col in feature_cols if col in X.columns]
 
     if not available_cols:
@@ -649,20 +682,20 @@ def shap_analysis(df, model, feature_cols):
         for feat in missing_features:
             df_shap_sample[feat] = 0
 
-    # Reorder
+    # Reorder to ensure we have all model features
+    # Add any missing model features with zeros
+    for feat in model_features:
+        if feat not in df_shap_sample.columns:
+            df_shap_sample[feat] = 0
     df_shap_sample = df_shap_sample[model_features]
     print(f"   ✓ Aligned features: {df_shap_sample.shape}")
 
-    # Scale (load scaler)
+    # Scale using safe_scale_features (load scaler)
     scaler = joblib.load(SCALER_FILE)
-    X_shap_scaled = scaler.transform(df_shap_sample)
+    X_shap = safe_scale_features(scaler, df_shap_sample, model_features)
 
-    # Convert to DataFrame
-    X_shap = pd.DataFrame(
-        X_shap_scaled,
-        columns=model_features,
-        index=df_shap_sample.index
-    )
+    # Ensure columns are in the correct order for the model
+    X_shap = X_shap[model_features]
     print(f"   ✓ Scaled shape: {X_shap.shape}")
 
     # Create explainer
