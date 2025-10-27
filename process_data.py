@@ -54,6 +54,35 @@ print(f"✓ Filtered: {len(df):,} rows (from {original_count:,})")
 print(f"  Filtered out: {original_count - len(df):,} rows\n")
 
 # ============================================================================
+# 2B. HANDLE EQUIPMENT TYPE - USE Component_Equipment_Type IF AVAILABLE
+# ============================================================================
+print("[2B/6] Processing equipment type...")
+
+if 'Component_Equipment_Type' in df.columns:
+    print("  ✓ Component_Equipment_Type column found")
+
+    # Count non-empty values
+    non_empty_component = df['Component_Equipment_Type'].notna() & (df['Component_Equipment_Type'].astype(str).str.strip() != '')
+    component_count = non_empty_component.sum()
+
+    # Create consolidated Equipment_Type column
+    # Use Component_Equipment_Type if not empty, otherwise use Ekipman Sınıfı
+    df['Equipment_Type'] = df.apply(
+        lambda row: row['Component_Equipment_Type']
+        if pd.notna(row.get('Component_Equipment_Type')) and str(row.get('Component_Equipment_Type')).strip() != ''
+        else row.get('Ekipman Sınıfı'),
+        axis=1
+    )
+
+    print(f"  ✓ Using Component_Equipment_Type: {component_count:,} ({component_count/len(df)*100:.1f}%)")
+    print(f"  ✓ Using Ekipman Sınıfı fallback: {len(df) - component_count:,} ({(len(df) - component_count)/len(df)*100:.1f}%)")
+else:
+    print("  ⚠️  Component_Equipment_Type column not found, using Ekipman Sınıfı only")
+    df['Equipment_Type'] = df.get('Ekipman Sınıfı')
+
+print(f"  Total unique equipment types: {df['Equipment_Type'].nunique():,}\n")
+
+# ============================================================================
 # 3. PARSE AND VALIDATE DATES
 # ============================================================================
 print("[3/6] Parsing and validating date columns...")
@@ -240,10 +269,15 @@ for min_age, max_age, label in age_ranges:
     count = ((df['Ekipman_Yaşı_Yıl'] >= min_age) & (df['Ekipman_Yaşı_Yıl'] < max_age)).sum()
     print(f"    {label:25s}: {count:6,} ({count/len(df)*100:5.1f}%)")
 
-print("\n🎯 EQUIPMENT CLASS DISTRIBUTION:")
-eq_class_dist = df['Ekipman Sınıfı'].value_counts().head(10)
-for eq_class, count in eq_class_dist.items():
-    print(f"  {str(eq_class):30s}: {count:6,} ({count/len(df)*100:5.1f}%)")
+print("\n🎯 EQUIPMENT TYPE DISTRIBUTION (Consolidated):")
+if 'Equipment_Type' in df.columns:
+    eq_type_dist = df['Equipment_Type'].value_counts().head(10)
+    for eq_type, count in eq_type_dist.items():
+        print(f"  {str(eq_type):30s}: {count:6,} ({count/len(df)*100:5.1f}%)")
+else:
+    eq_class_dist = df['Ekipman Sınıfı'].value_counts().head(10)
+    for eq_class, count in eq_class_dist.items():
+        print(f"  {str(eq_class):30s}: {count:6,} ({count/len(df)*100:5.1f}%)")
 
 print("\n🔧 KESICI EQUIPMENT CLASS (Target Equipment):")
 kesici_mask = df['Ekipman Sınıfı'].str.contains('Kesici|kesici', na=False, case=False)
@@ -326,8 +360,13 @@ with open(summary_file, 'w', encoding='utf-8') as f:
         count = ((df['Ekipman_Yaşı_Yıl'] >= min_age) & (df['Ekipman_Yaşı_Yıl'] < max_age)).sum()
         f.write(f"  {label}: {count:,} ({count/len(df)*100:.1f}%)\n")
     
-    f.write("\nEQUIPMENT CLASS DISTRIBUTION:\n")
-    f.write(df['Ekipman Sınıfı'].value_counts().head(15).to_string())
+    f.write("\nEQUIPMENT TYPE DISTRIBUTION (Consolidated):\n")
+    if 'Equipment_Type' in df.columns:
+        f.write(df['Equipment_Type'].value_counts().head(15).to_string())
+        f.write("\n\nORIGINAL EQUIPMENT CLASS DISTRIBUTION:\n")
+        f.write(df['Ekipman Sınıfı'].value_counts().head(15).to_string())
+    else:
+        f.write(df['Ekipman Sınıfı'].value_counts().head(15).to_string())
 
 print(f"✓ Detailed summary saved to: {summary_file}")
 
@@ -340,4 +379,8 @@ print("   ⚠️ This is a LOWER BOUND - equipment may be older!")
 print(f"3. Equipment Age > 50 years: {(df['Ekipman_Yaşı_Yıl'] > 50).sum():,} cases")
 print(f"   → Using proxy dates: {((df['Ekipman_Yaşı_Yıl'] > 50) & (df['Yaş_Kaynak'] == 'FIRST_WORKORDER_PROXY')).sum():,}")
 print("   → Consider reviewing these manually")
+if 'Component_Equipment_Type' in df.columns:
+    component_used = (df['Component_Equipment_Type'].notna() & (df['Component_Equipment_Type'].astype(str).str.strip() != '')).sum()
+    print(f"4. ✅ Equipment Type: Using Component_Equipment_Type when available ({component_used:,} records)")
+    print("   → Falls back to 'Ekipman Sınıfı' when Component_Equipment_Type is empty")
 print("\n✅ Ready for STEP 2: Feature Engineering\n")
