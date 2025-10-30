@@ -34,7 +34,7 @@ pd.set_option('display.width', 200)
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-INPUT_FILE = 'outputs/step2_features_added.xlsx'  # Or step1 if no feature engineering
+INPUT_FILE = 'outputs/step2_feature_engineered_data.xlsx'  # Using existing feature engineering output
 MODEL_FILE = 'outputs/step3_5_survival_model.pkl'
 SCALER_FILE = 'outputs/step3_5_survival_scaler.pkl'
 FEATURES_FILE = 'outputs/step3_5_survival_features.json'

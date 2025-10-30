@@ -35,7 +35,7 @@ pd.set_option('display.width', 200)
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
-INPUT_FILE = 'outputs/step2_features_added.xlsx'
+INPUT_FILE = 'outputs/step2_feature_engineered_data.xlsx'  # Using existing feature engineering output
 OUTPUT_DIR = 'outputs/'
 RANDOM_STATE = 42
 MAX_OBSERVATION_DAYS = 730  # 2 years maximum observation window
