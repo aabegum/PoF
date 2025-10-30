@@ -1275,8 +1275,10 @@ def catboost_comparison(df, feature_cols, scaler):
 
     # Feature importance
     cat_importance = catboost_model.get_feature_importance()
+    # Use actual feature names from training data (includes missing features added with zeros)
+    actual_features = X_train.columns.tolist()
     importance_df = pd.DataFrame({
-        'Feature': feature_cols,
+        'Feature': actual_features,
         'CatBoost_Importance': cat_importance
     }).sort_values('CatBoost_Importance', ascending=False)
 
