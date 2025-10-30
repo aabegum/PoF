@@ -122,7 +122,12 @@ def safe_scale_features(scaler, X, feature_cols):
                 X_scaled[col] = 0
             features_to_scale = scaler_features
 
+            # IMPORTANT: Convert all column names to regular Python strings to avoid str/np.str_ conflicts
+            X_scaled.columns = X_scaled.columns.astype(str)
+
         if features_to_scale:
+            # Ensure column names are strings before scaling
+            X_scaled.columns = X_scaled.columns.astype(str)
             # Scale only the features the scaler knows about, in the correct order
             X_scaled[scaler_features] = scaler.transform(X_scaled[scaler_features])
 
