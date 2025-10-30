@@ -39,6 +39,7 @@ MODEL_FILE = 'outputs/step3_5_survival_model.pkl'
 SCALER_FILE = 'outputs/step3_5_survival_scaler.pkl'
 FEATURES_FILE = 'outputs/step3_5_survival_features.json'
 METADATA_FILE = 'outputs/step3_5_survival_metadata.json'
+EQ_TYPE_FILE = 'outputs/step3_5_equipment_type_mapping.json'
 OUTPUT_DIR = 'outputs/'
 
 print("=" * 80)
@@ -74,6 +75,17 @@ print(f"     Trained on: {metadata['trained_on']}")
 
 horizons = metadata['horizons']
 
+# Load equipment type mapping
+equipment_type_info = None
+if os.path.exists(EQ_TYPE_FILE):
+    with open(EQ_TYPE_FILE, 'r') as f:
+        equipment_type_info = json.load(f)
+    print(f"   ✓ Equipment type mapping loaded")
+    print(f"     Equipment types: {equipment_type_info['top_n_types']}")
+    print(f"     Column used: {equipment_type_info['equipment_type_col']}")
+else:
+    print(f"   ℹ️  No equipment type mapping found (model trained without equipment type features)")
+
 # ============================================================================
 # 2. LOAD EQUIPMENT DATA
 # ============================================================================
@@ -100,9 +112,35 @@ else:
     print(f"   ✓ Total records: {len(df_equipment):,}")
 
 # ============================================================================
-# 3. PREPARE FEATURES
+# 3. PREPARE FEATURES (Including Equipment Type)
 # ============================================================================
 print("\n[3/6] Preparing Features...")
+
+# Create equipment type features if model was trained with them
+if equipment_type_info and equipment_type_info['equipment_type_col']:
+    print("\n   Creating equipment type features...")
+    equipment_type_col = equipment_type_info['equipment_type_col']
+    equipment_type_mapping = equipment_type_info['equipment_type_mapping']
+
+    if equipment_type_col in df_equipment.columns:
+        # Create one-hot encoded features for equipment types
+        for feature_name, eq_type in equipment_type_mapping.items():
+            df_equipment[feature_name] = (df_equipment[equipment_type_col] == eq_type).astype(int)
+
+        print(f"   ✓ Created {len(equipment_type_mapping)} equipment type features")
+
+        # Show distribution
+        eq_type_dist = df_equipment[equipment_type_col].value_counts().head(5)
+        print(f"   ✓ Top 5 equipment types in prediction data:")
+        for eq_type, count in eq_type_dist.items():
+            print(f"      - {eq_type}: {count:,} ({count/len(df_equipment)*100:.1f}%)")
+    else:
+        print(f"   ⚠️  Equipment type column '{equipment_type_col}' not found in data")
+        print(f"   ℹ️  Will add equipment type features with zeros")
+
+        # Add equipment type features with zeros
+        for feature_name in equipment_type_info['equipment_type_features']:
+            df_equipment[feature_name] = 0
 
 # Check which features are available
 missing_features = [f for f in feature_names if f not in df_equipment.columns]

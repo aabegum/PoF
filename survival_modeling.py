@@ -181,6 +181,62 @@ if len(selected_features) > 10:
     print(f"     ... and {len(selected_features) - 10} more")
 
 # ============================================================================
+# 3B. ADD EQUIPMENT TYPE FEATURES (ONE-HOT ENCODING)
+# ============================================================================
+print("\n[3B/9] Adding Equipment Type Features...")
+
+# Check for Equipment_Type column (consolidated type)
+equipment_type_col = None
+if 'Equipment_Type' in df.columns:
+    equipment_type_col = 'Equipment_Type'
+    print(f"   ✓ Using Equipment_Type column")
+elif 'Ekipman Sınıfı' in df.columns:
+    equipment_type_col = 'Ekipman Sınıfı'
+    print(f"   ✓ Using Ekipman Sınıfı column (fallback)")
+else:
+    print(f"   ⚠️  No equipment type column found, skipping equipment type features")
+
+equipment_type_features = []
+equipment_type_mapping = {}
+
+if equipment_type_col:
+    # Get equipment type distribution
+    eq_type_counts = df[equipment_type_col].value_counts()
+    print(f"   ✓ Found {len(eq_type_counts)} unique equipment types")
+
+    # Keep only top N types (to avoid too many features)
+    TOP_N_TYPES = 15  # Keep top 15 most common types
+    MIN_COUNT = 50    # Minimum 50 occurrences to include
+
+    top_types = eq_type_counts.head(TOP_N_TYPES)
+    top_types = top_types[top_types >= MIN_COUNT]
+
+    print(f"   ✓ Keeping top {len(top_types)} equipment types (min count: {MIN_COUNT})")
+    print(f"     Top 5 types:")
+    for eq_type, count in top_types.head(5).items():
+        print(f"       - {eq_type}: {count:,} ({count/len(df)*100:.1f}%)")
+
+    # Create one-hot encoded features
+    for eq_type in top_types.index:
+        # Create clean feature name
+        feature_name = f"EqType_{eq_type}".replace(' ', '_').replace('/', '_').replace('-', '_')
+        feature_name = feature_name[:50]  # Truncate if too long
+
+        # Create binary feature
+        df[feature_name] = (df[equipment_type_col] == eq_type).astype(int)
+        equipment_type_features.append(feature_name)
+        equipment_type_mapping[feature_name] = eq_type
+
+    print(f"   ✓ Created {len(equipment_type_features)} equipment type features")
+
+    # Add equipment type features to selected features
+    selected_features = selected_features + equipment_type_features
+
+    print(f"   ✓ Total features (including equipment type): {len(selected_features)}")
+else:
+    print(f"   ⚠️  Proceeding without equipment type features")
+
+# ============================================================================
 # 4. PREPARE DATA FOR SURVIVAL MODEL
 # ============================================================================
 print("\n[4/9] Preparing Data for Survival Model...")
@@ -389,11 +445,25 @@ with open(features_file, 'w') as f:
     json.dump(selected_features, f, indent=2)
 print(f"   ✓ Features: {features_file}")
 
+# Save equipment type mapping
+eq_type_file = OUTPUT_DIR + 'step3_5_equipment_type_mapping.json'
+with open(eq_type_file, 'w') as f:
+    json.dump({
+        'equipment_type_col': equipment_type_col,
+        'equipment_type_features': equipment_type_features,
+        'equipment_type_mapping': equipment_type_mapping,
+        'top_n_types': len(equipment_type_features)
+    }, f, indent=2)
+print(f"   ✓ Equipment type mapping: {eq_type_file}")
+
 # Save metadata
 metadata = {
     'model_type': best_model_name,
     'c_index': float(best_cindex),
     'n_features': len(selected_features),
+    'n_features_base': len(selected_features) - len(equipment_type_features),
+    'n_features_equipment_type': len(equipment_type_features),
+    'equipment_type_col': equipment_type_col,
     'n_train': len(X_train),
     'n_test': len(X_test),
     'n_events_train': int(y_train['event'].sum()),
@@ -459,11 +529,18 @@ print("\n" + "=" * 80)
 print("✅ STEP 3.5: SURVIVAL MODELING COMPLETED SUCCESSFULLY")
 print("=" * 80)
 
+eq_type_summary = f"""
+  • Equipment type features: {len(equipment_type_features)} types
+  • Equipment type column: {equipment_type_col}
+""" if equipment_type_features else "  • Equipment type features: Not used"
+
 print(f"""
 📊 MODEL PERFORMANCE:
   • Model: {best_model_name}
   • C-index: {best_cindex:.4f} (higher is better, 0.5 = random, 1.0 = perfect)
-  • Features: {len(selected_features)}
+  • Total features: {len(selected_features)}
+  • Base features: {len(selected_features) - len(equipment_type_features)}
+{eq_type_summary}
   • Events: {n_events:,} ({n_events/len(df)*100:.1f}%)
   • Censored: {n_censored:,} ({n_censored/len(df)*100:.1f}%)
 
@@ -475,6 +552,7 @@ print(f"""
 
 🎯 DELIVERABLES:
   • Single unified survival model
+  • Equipment-specific failure patterns learned
   • Risk scores for all equipment at all horizons
   • High-risk equipment identified ({len(high_risk):,} records)
 
