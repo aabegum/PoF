@@ -132,8 +132,11 @@ def safe_scale_features(scaler, X, feature_cols):
         if features_to_scale:
             # Ensure column names are strings before scaling
             X_scaled.columns = X_scaled.columns.astype(str)
-            # Scale only the features the scaler knows about, in the correct order
-            X_scaled[scaler_features] = scaler.transform(X_scaled[scaler_features])
+
+            # IMPORTANT: Pass numpy array to scaler to bypass feature name validation
+            # This avoids str/np.str_ type conflicts in sklearn's validation
+            scaled_values = scaler.transform(X_scaled[scaler_features].values)
+            X_scaled[scaler_features] = scaled_values
 
         # Show info about what was scaled (only show once per run)
         if not hasattr(safe_scale_features, '_info_shown'):
@@ -155,8 +158,8 @@ def safe_scale_features(scaler, X, feature_cols):
         scaler.fit(X[available_cols])
         scaler._needs_fitting = False
 
-    # Transform
-    X_scaled[available_cols] = scaler.transform(X[available_cols])
+    # Transform - use .values to pass numpy array and avoid feature name validation
+    X_scaled[available_cols] = scaler.transform(X[available_cols].values)
 
     return X_scaled
 
