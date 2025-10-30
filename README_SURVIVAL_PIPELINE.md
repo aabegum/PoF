@@ -227,7 +227,8 @@ Predictions: One model for all horizons
 outputs/
 ├── step3_5_survival_model.pkl          # Trained survival model
 ├── step3_5_survival_scaler.pkl         # Feature scaler
-├── step3_5_survival_features.json      # Feature list
+├── step3_5_survival_features.json      # Feature list (includes equipment type features)
+├── step3_5_equipment_type_mapping.json # Equipment type encoding mapping ✨ NEW
 ├── step3_5_survival_metadata.json      # Model metadata
 ├── step3_5_survival_risk_scored.xlsx   # All records with risk scores
 ├── step3_5_survival_high_risk.xlsx     # High-risk equipment
@@ -255,14 +256,63 @@ Equipment_Type = Component_Equipment_Type if not empty
                  else Ekipman Sınıfı (fallback)
 ```
 
+### In survival_modeling.py (Step 3.5): ✨ NEW ENHANCEMENT
+**Equipment type is now used as a MODEL FEATURE** for improved predictions!
+
+**Implementation:**
+- One-hot encoding of top 15 most common equipment types
+- Minimum 50 occurrences required to include a type
+- Creates binary features: `EqType_[equipment_type_name]`
+- Automatically saved for prediction pipeline
+
+**Configuration:**
+```python
+TOP_N_TYPES = 15   # Keep top 15 most common types
+MIN_COUNT = 50     # Minimum 50 occurrences to include
+```
+
+**Why this improves predictions:**
+- ✅ Different equipment types have different failure patterns
+- ✅ Some types naturally fail more frequently
+- ✅ Age affects different equipment types differently
+- ✅ Model learns equipment-specific risk profiles
+
+**Expected Performance Gain:**
+- C-index improvement: **+0.02 to +0.05**
+- Example: If base C-index is 0.70, expect 0.72-0.75 with equipment type
+
+**Example Output:**
+```
+[3B/9] Adding Equipment Type Features...
+   ✓ Using Equipment_Type column
+   ✓ Found 87 unique equipment types
+   ✓ Keeping top 15 equipment types (min count: 50)
+     Top 5 types:
+       - Transformer: 12,345 (45.2%)
+       - Circuit Breaker: 8,234 (30.1%)
+       - Switchgear: 3,456 (12.6%)
+       - Recloser: 2,123 (7.8%)
+       - Fuse: 1,234 (4.5%)
+   ✓ Created 15 equipment type features
+   ✓ Total features (including equipment type): 31
+```
+
+### In predict_all_equipment.py (Step 5):
+**Automatically handles equipment type features:**
+- Loads equipment type mapping from training
+- Creates same one-hot encoded features for new data
+- Handles equipment types not seen during training (assigns zeros)
+- No manual intervention needed!
+
 ### In Analytics (Step 4):
 - Survival curves by equipment type
 - Interactive maps colored by equipment type
 - CAPEX prioritization lists grouped by type
 
-### In Predictions (Step 5):
+### In Output (Step 5):
 - Equipment type included in output sheets for filtering
 - Can analyze risk distribution by equipment type
+- Predictions are equipment-specific
 
 ---
 
@@ -328,9 +378,10 @@ The analytics scripts (comprehensive_analytics.py, etc.) still use the old class
 - Need more data or better features
 
 **Solutions:**
-- Add equipment type as feature (one-hot encoding)
+- Equipment type is already included as feature ✅
 - Include maintenance history if available
 - Add external factors (weather, load patterns)
+- Increase feature engineering (more interaction terms)
 
 ### Prediction Script Fails
 **Common issues:**
@@ -342,8 +393,8 @@ The analytics scripts (comprehensive_analytics.py, etc.) still use the old class
 
 ## FAQ
 
-**Q: Can I add equipment type as a feature to improve predictions?**
-A: Yes! Modify survival_modeling.py to add one-hot encoding of Equipment_Type to the feature list. This typically improves C-index by 0.02-0.05.
+**Q: Is equipment type used as a feature in the model?**
+A: ✅ **YES!** Equipment type is now automatically included as a feature. The model creates one-hot encoded features for the top 15 most common equipment types (minimum 50 occurrences). This typically improves C-index by 0.02-0.05. You can adjust `TOP_N_TYPES` and `MIN_COUNT` in survival_modeling.py if needed.
 
 **Q: How do I predict risk at a custom horizon (e.g., 9 months)?**
 A: Modify predict_all_equipment.py to add `'9_month': 274` to the `horizons` dictionary.
