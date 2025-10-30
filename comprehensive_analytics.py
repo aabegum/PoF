@@ -101,10 +101,14 @@ def safe_scale_features(scaler, X, feature_cols):
     """
     X_scaled = X.copy()
 
+    # IMPORTANT: Ensure all column names are regular Python strings at the start
+    X_scaled.columns = X_scaled.columns.astype(str)
+
     # Check if scaler has feature names from training
     if hasattr(scaler, 'feature_names_in_'):
         # Scaler was fit with specific features - use only those
-        scaler_features = list(scaler.feature_names_in_)
+        # IMPORTANT: Convert to regular Python strings to avoid np.str_ types
+        scaler_features = [str(f) for f in scaler.feature_names_in_]
 
         # Find which of our features were in the scaler's training
         features_to_scale = [col for col in feature_cols if col in scaler_features]
